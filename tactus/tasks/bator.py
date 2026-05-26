@@ -6,6 +6,8 @@ variable) to produce an ``ECMA.<obstype>`` ODB subbase.
 """
 import os
 import shutil
+import subprocess
+from collections.abc import Mapping
 
 import pyproj
 
@@ -45,7 +47,8 @@ class Bator(Task):
         self.bator_nbslot = config.get("da.bator_nbslot", 1)
         self.bator_slot_len = config.get("da.bator_slot_len", 0)
         self.bator_center_len = config.get("da.bator_center_len", 0)
-        self.obs_sources = config.get("da.obs_sources", {})
+        obs_provider = config.get("da.obs_provider", "UWC")
+        self._provider = config.get("da.providers", {}).get(obs_provider, {})
         self.nlgen = NamelistGenerator(config, "bator")
         logger.debug("Constructed Bator task for obstype={}", self.obstype)
 
@@ -83,10 +86,8 @@ class Bator(Task):
         nam_lamflag = os.path.join(
             self.da_nam_dir, f"aldnml_lamflag_{self.domain}"
         )
-        if os.path.isfile(nam_lamflag):
-            os.symlink(nam_lamflag, "NAM_lamflag")
-        else:
-            self._write_nam_lamflag()
+        # lamflag
+        self._write_nam_lamflag()
         bator_lamflag = "1"
 
         for extra_nl in ["aldnml_rgb", "aldnml_gpssol_list"]:
@@ -98,10 +99,12 @@ class Bator(Task):
             if os.path.isfile(src):
                 os.symlink(src, dst_map[extra_nl])
 
-        for const in ["LISTE_NOIRE_DIAP", "LISTE_LOC"]:
+        for const in ["LISTE_LOC"]:
             src = os.path.join(self.da_const_dir, const)
             if os.path.isfile(src):
                 os.symlink(src, const)
+
+        self._stage_blacklist()
 
         # --- ODB environment ---
         rte = dict(os.environ)
@@ -134,29 +137,55 @@ class Bator(Task):
                 "BATOR_NBSLOT": str(self.bator_nbslot),
                 "BATOR_BASE": os.path.dirname(bator_bin),
                 "BATOR_LAMFLAG": bator_lamflag,
-                "SWAPP_ODB_IOASSIGN": os.path.join(self.wdir, "ioassign"),
-                "ODB_SRCPATH_ECMA": os.path.join(self.wdir, "ECMA"),
-                "ODB_DATAPATH_ECMA": os.path.join(self.wdir, "ECMA"),
+                "IOASSIGN": os.path.join(self.wdir, "IOASSIGN"),
+                "SWAPP_ODB_IOASSIGN": os.path.join(self.wdir, "IOASSIGN"),
+                "ODB_SRCPATH_ECMA": os.path.join(self.wdir, f"ECMA.{self.obstype}"),
+                "ODB_DATAPATH_ECMA": os.path.join(self.wdir, f"ECMA.{self.obstype}"),
                 "ODB_ECMA_CREATE_POOLMASK": "1",
                 "ODB_ECMA_POOLMASK_FILE": os.path.join(
-                    self.wdir, "ECMA", "ECMA.poolmask"
+                    self.wdir, f"ECMA.{self.obstype}", "ECMA.poolmask"
                 ),
                 "DR_HOOK_ASSERT_MPI_INITIALIZED": "0",
             }
         )
 
         # --- stage obs file(s) from ObsPrep output ---
-        matched_spec = self._stage_obs(obsprep_dir)
+        local_name = self._stage_obs(obsprep_dir)
 
-        if not matched_spec:
+        if not local_name:
             logger.info(
                 "Bator: no obs file for obstype '{}' — skipping BATOR run.",
                 self.obstype,
             )
             return
 
+        self._strip_obsoul_ships(local_name)
+
         # --- create refdata and batormap ---
-        self._write_refdata_and_batormap(yyyy, mm, dd, rr, matched_spec)
+        self._write_refdata_and_batormap(yyyy, mm, dd, rr, local_name)
+
+        # --- create ECMA output directory ---
+        os.makedirs(f"ECMA.{self.obstype}", exist_ok=True)
+
+        # --- create IOASSIGN file ---
+        # create_ioassign internally calls the `ioassign` binary so `.` must be on PATH.
+        ioassign_env = dict(rte)
+        ioassign_env["PATH"] = "." + os.pathsep + ioassign_env.get("PATH", "")
+        result = subprocess.run(
+            f"./create_ioassign -l{rte['ODB_CMA']} -n{self.nbpool}",
+            shell=True,
+            env=ioassign_env,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"create_ioassign failed with return code {result.returncode}"
+            )
+        ioassign_file = os.path.join(self.wdir, "IOASSIGN")
+        if not os.path.isfile(ioassign_file):
+            raise RuntimeError(
+                f"create_ioassign returned 0 but IOASSIGN file not found at {ioassign_file}"
+            )
+        logger.info("Bator: IOASSIGN created at {}", ioassign_file)
 
         # --- run BATOR ---
         # The platform wrapper (srun) acts as the MPI launcher on SLURM systems;
@@ -180,72 +209,103 @@ class Bator(Task):
         if os.path.isdir(ecma_out):
             dst = os.path.join(out_dir, ecma_out)
             if os.path.exists(dst):
-                shutil.rmtree(dst)
-            shutil.copytree(ecma_out, dst)
+                shutil.rmtree(dst, ignore_errors=True)
+            shutil.copytree(ecma_out, dst, symlinks=True)
             logger.info("Bator: archived {} to {}", ecma_out, out_dir)
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
+    def _stage_blacklist(self):
+        """Stage LISTE_NOIRE_DIAP, appending SYNOP SHIP reject for surface stream.
+
+        In the surface assimilation stream CANARI aborts (MKGLOBSTAB_MODEL) when
+        SYNOP SHIP reports arrive in the ECMA with lat=0/lon=0 — a known artefact
+        of how certain ship records are stored.  CANARI only needs land-surface
+        synop, so ships are simply rejected for this stream.
+        """
+        src = os.path.join(self.da_const_dir, "LISTE_NOIRE_DIAP")
+        da_stream = os.environ.get("DA_STREAM", "")
+
+        if not os.path.isfile(src):
+            return
+
+        if da_stream != "surface":
+            os.symlink(src, "LISTE_NOIRE_DIAP")
+            return
+
+        # Surface stream: copy base blacklist and append a catch-all SYNOP SHIP entry.
+        shutil.copy2(src, "LISTE_NOIRE_DIAP")
+        date_str = self.basetime.strftime("%d%m%Y")
+        with open("LISTE_NOIRE_DIAP", "a") as fh:
+            fh.write(
+                f" 1 SHIP        21 -1  -1                                  {date_str}\n"
+            )
+        logger.debug("Bator: appended SYNOP SHIP blacklist entry to LISTE_NOIRE_DIAP")
+
     def _stage_obs(self, obsprep_dir):
         """Link the obs file produced by ObsPrep into the work dir.
 
-        ObsPrep already merged all candidates into a single file named
-        ``local_name``.  We just need to symlink that file here.
+        Returns the local_name string on success, None if no file is available.
         """
-        spec = self.obs_sources.get(self.obstype)
-        if not spec:
-            logger.warning(
-                "Bator: no obs_sources entry for obstype '{}' — skipping file staging",
+        spec = self._provider.get(self.obstype)
+        if not isinstance(spec, Mapping):
+            logger.info(
+                "Bator: no provider entry for obstype '{}' — skipping.",
                 self.obstype,
             )
             return None
 
-        local_name = spec.get("local_name", "")
-        if not local_name:
-            logger.warning(
-                "Bator: obs_sources entry for '{}' has no local_name", self.obstype
-            )
-            return None
-
+        local_name = spec.get("local_name", self.obstype)
         src = os.path.join(obsprep_dir, local_name)
         if not os.path.isfile(src):
-            logger.warning(
-                "Bator: no obs file found in {} for obstype '{}'",
-                obsprep_dir,
+            logger.info(
+                "Bator: no obs file '{}' in obsprep dir for obstype '{}' — skipping.",
+                local_name,
                 self.obstype,
             )
             return None
 
         if not os.path.lexists(local_name):
-            os.symlink(src, local_name)
-        logger.debug("Bator: linked {} -> {}", src, local_name)
-        return spec
+            if local_name.startswith("OBSOUL."):
+                self._copy_obsoul_fixed_header(src, local_name)
+            else:
+                os.symlink(src, local_name)
+        logger.debug("Bator: staged {} -> {}", src, local_name)
+        return local_name
 
-    def _write_refdata_and_batormap(self, yyyy, mm, dd, rr, spec):
-        """Write refdata and batormap files from the matched obs-source spec.
+    def _copy_obsoul_fixed_header(self, src, local_name):
+        """Copy OBSOUL file rewriting the header time to 6-digit HHMMSS format.
 
-        ``spec`` is the dict returned by ``_stage_obs`` and must carry:
-          ``format``     — file format string passed to BATOR (OBSOUL, BUFR, NETCDF, …)
-          ``bator_name`` — internal BATOR obs-type identifier (defaults to obstype)
+        BATOR requires the header line to be "    YYYYMMDD<TAB>HHMMSS".
+        Some providers write only a 2-digit HH (e.g. "    20250209          00")
+        which causes BATOR to abort with "OBsoul incorrect".
         """
-        if not spec:
-            logger.warning(
-                "Bator: no matched spec for obstype '{}' — skipping refdata/batormap",
-                self.obstype,
-            )
-            return
+        hhmmss = self.basetime.strftime("%H") + "0000"
+        yyyymmdd = self.basetime.strftime("%Y%m%d")
+        correct_header = f"    {yyyymmdd}\t{hhmmss}\n"
+        with open(src) as fin, open(local_name, "w") as fout:
+            fin.readline()  # discard original header
+            fout.write(correct_header)
+            for line in fin:
+                fout.write(line)
+        logger.debug("Bator: copied {} with fixed OBSOUL header", local_name)
 
-        fmt = spec.get("format", "")
+    def _write_refdata_and_batormap(self, yyyy, mm, dd, rr, local_name):
+        """Write refdata and batormap files.
+
+        Format is derived from the local_name prefix (e.g. "OBSOUL.synop" → "OBSOUL").
+        """
+        fmt = local_name.split(".")[0].upper() if "." in local_name else ""
         if not fmt:
             logger.warning(
-                "Bator: spec for obstype '{}' has no 'format' — skipping refdata/batormap",
-                self.obstype,
+                "Bator: cannot derive format from local_name '{}' — skipping refdata/batormap",
+                local_name,
             )
             return
 
-        bator_name = spec.get("bator_name", self.obstype)
+        bator_name = self.obstype
         with open("refdata", "w") as fh:
             fh.write(
                 f"{self.obstype:<8} {fmt:<8} {bator_name:<16} {yyyy}{mm}{dd} {rr}\n"
@@ -253,6 +313,38 @@ class Bator(Task):
         with open("batormap", "w") as fh:
             fh.write(
                 f"{self.obstype:<8} {self.obstype:<8} {fmt:<8} {bator_name}\n"
+            )
+
+    def _strip_obsoul_ships(self, local_name):
+        """Remove SYNOP SHIP records from an OBSOUL file for the surface stream.
+
+        BATOR stores ships with lat=0/lon=0 in the ODB because they are absent
+        from the land-station reference list.  Surface DA only needs land synops,
+        so records with station number 10000024 (the OBSOUL ship encoding) are
+        dropped before BATOR reads the file.
+        """
+        if os.environ.get("DA_STREAM", "") != "surface":
+            return
+        if not local_name.startswith("OBSOUL."):
+            return
+        if not os.path.isfile(local_name):
+            return
+
+        tmp = local_name + ".no_ships"
+        removed = 0
+        with open(local_name) as fin, open(tmp, "w") as fout:
+            fout.write(fin.readline())  # preserve header line
+            for line in fin:
+                fields = line.split()
+                if len(fields) >= 3 and fields[2].lstrip("-").isdigit() and int(fields[2]) > 99999:
+                    removed += 1
+                    continue
+                fout.write(line)
+        os.replace(tmp, local_name)
+        if removed:
+            logger.debug(
+                "Bator: stripped {} SYNOP SHIP records from {}",
+                removed, local_name,
             )
 
     def _write_nam_lamflag(self):
@@ -289,18 +381,19 @@ class Bator(Task):
         y_sw = yc - 0.5 * (nlat - 1) * xdy
         lon1, lat1 = to_geo.transform(x_sw, y_sw)
 
+        surface_stream = os.environ.get("DA_STREAM", "") == "surface"
         obs_flags = [
-            ("LAIREP", True),
-            ("LDRIBU", True),
+            ("LAIREP", not surface_stream),
+            ("LDRIBU", not surface_stream),
             ("LPAOB", False),
-            ("LPILOT", True),
-            ("LRADAR", True),
-            ("LSATEM", True),
-            ("LSATOB", True),
-            ("LSCATT", True),
-            ("LSLIMB", True),
+            ("LPILOT", not surface_stream),
+            ("LRADAR", not surface_stream),
+            ("LSATEM", not surface_stream),
+            ("LSATOB", not surface_stream),
+            ("LSCATT", not surface_stream),
+            ("LSLIMB", not surface_stream),
             ("LSYNOP", True),
-            ("LTEMP", True),
+            ("LTEMP", not surface_stream),
         ]
 
         def _tf(v):
@@ -322,9 +415,9 @@ class Bator(Task):
             fh.write("  LNEWGEOM=.T.,\n")
             fh.write("  LVAR=.T.,\n")
             fh.write("  NFDGUN=1,\n")
-            fh.write(f"  NFDGUX={nlon},\n")
+            fh.write(f"  NFDGUX={nlat},\n")
             fh.write("  NFDLUN=1,\n")
-            fh.write(f"  NFDLUX={nlat},\n")
+            fh.write(f"  NFDLUX={nlon},\n")
             fh.write(f"  REDZONE={redzone:.7G},\n")
             fh.write(f"  Z_CANZONE={canzone:.7G},\n")
             fh.write("/\n")

@@ -11,8 +11,7 @@ from tactus.config_parser import ParsedConfig
 from tactus.derived_variables import derived_variables
 from tactus.logs import logger
 from tactus.os_utils import tactusmakedirs
-from tactus.plugin import TactusPluginRegistryFromConfig
-from tactus.tasks.discover_task import available_tasks
+from tactus.tasks.discover_task import load_task_index
 from tactus.toolbox import FileManager, Platform
 
 
@@ -30,22 +29,22 @@ class ProcessorLayout:
         """
         self.wrapper = kwargs.get("WRAPPER")
         self.nproc = kwargs.get("NPROC")
-        if self.nproc == "":
+        if not self.nproc:
             self.nproc = None
         if isinstance(self.nproc, str):
             self.nproc = int(self.nproc)
         self.nproc_io = kwargs.get("NPROC_IO")
-        if self.nproc_io == "":
+        if not self.nproc_io:
             self.nproc_io = None
         if isinstance(self.nproc_io, str):
             self.nproc_io = int(self.nproc_io)
         self.nprocx = kwargs.get("NPROCX")
-        if self.nprocx == "":
+        if not self.nprocx:
             self.nprocx = None
         if isinstance(self.nprocx, str):
             self.nprocx = int(self.nprocx)
         self.nprocy = kwargs.get("NPROCY")
-        if self.nprocy == "":
+        if not self.nprocy:
             self.nprocy = None
         if isinstance(self.nprocy, str):
             self.nprocy = int(self.nprocy)
@@ -57,9 +56,12 @@ class ProcessorLayout:
         nproc_io = self.nproc_io
         nprocx = self.nprocx
         nprocy = self.nprocy
-        procs.update(
-            {"nproc": nproc, "nproc_io": nproc_io, "nprocx": nprocx, "nprocy": nprocy}
-        )
+        procs.update({
+            "nproc": nproc,
+            "nproc_io": nproc_io,
+            "nprocx": nprocx,
+            "nprocy": nprocy,
+        })
         return procs
 
     def get_wrapper(self):
@@ -83,7 +85,7 @@ class TaskSettings(object):
              config(tactus.ParserdConfig): Configuration
         """
         self.config = config
-        self.submission_defs = self.config["submission"].dict()
+        self.submission_defs = self.config.get_as_dict("submission")
         self.job_type = None
         self.processor_layout = None
 
@@ -164,10 +166,19 @@ class TaskSettings(object):
                 )
                 break
 
-        if "task_exceptions" in all_defs and task in all_defs["task_exceptions"]:
-            logger.debug("Task task_exceptions for task {}", task)
+        task_exc_key = None
+        if "task_exceptions" in all_defs:
+            if task in all_defs["task_exceptions"]:
+                task_exc_key = task
+            else:
+                for exc_key in all_defs["task_exceptions"]:
+                    if task.startswith(exc_key + "_"):
+                        task_exc_key = exc_key
+                        break
+        if task_exc_key is not None:
+            logger.debug("Task task_exceptions for task {} (key={})", task, task_exc_key)
             task_settings = self.update_task_setting(
-                task_settings, all_defs["task_exceptions"][task]
+                task_settings, all_defs["task_exceptions"][task_exc_key]
             )
 
         if "SCHOST" in task_settings:
@@ -312,6 +323,9 @@ class TaskSettings(object):
             for b_setting in batch_settings.values():
                 file_handler.write(f"{b_setting}\n")
 
+            if scheduler is None:
+                nproc_io = self.get_task_settings(task, "NPROC_IO")
+                file_handler.write(f'export NPROC_IO="{nproc_io}"\n')
             if scheduler is not None and scheduler == "ecflow":
                 ecf_vars = [
                     "ECF_HOST",
@@ -336,6 +350,7 @@ class TaskSettings(object):
                     "MEMBER",
                     "OBSTYPE",
                     "DA_STREAM",
+                    "TACTUS_TASK",
                 ]
                 for ecf_var in ecf_vars:
                     file_handler.write(f'export {ecf_var}="%{ecf_var}%"\n')
@@ -413,7 +428,8 @@ class NoSchedulerSubmission:
         task_job: Path,
         output: Path,
         member: Optional[int] = None,
-        troika: str = "troika",
+        troika: Optional[str] = "troika",
+        create_only: Optional[bool] = False,
     ):
         """Submit task.
 
@@ -426,12 +442,13 @@ class NoSchedulerSubmission:
             member      (int, optional): Member number for which to submit job.
                 Defaults to None.
             troika      (str, optional): troika binary. Defaults to "troika".
+            create_only: (bool, optional): Only create the job, do not submit it.
 
         Raises:
             RuntimeError: Submission failure.
         """
         name = task.lower()
-        if name not in available_tasks(TactusPluginRegistryFromConfig(config)):
+        if name not in load_task_index(config):
             raise NotImplementedError(f"Task {name} not implemented")
 
         troika_config = Platform(config).get_value("troika.config_file")
@@ -451,11 +468,12 @@ class NoSchedulerSubmission:
             member=member,
             scheduler=None,
         )
-        cmd = (
-            f"{troika} -c {troika_config} submit {self.task_settings.job_type} "
-            f"{task_job} -o {output}"
-        )
-        try:
-            subprocess.check_call(cmd.split())  # noqa S603
-        except subprocess.CalledProcessError as exc:
-            raise RuntimeError(f"Submission failed with {exc!r}") from exc
+        if not create_only:
+            cmd = (
+                f"{troika} -c {troika_config} submit {self.task_settings.job_type} "
+                f"{task_job} -o {output}"
+            )
+            try:
+                subprocess.check_call(cmd.split())
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(f"Submission failed with {exc!r}") from exc

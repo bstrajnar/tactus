@@ -9,6 +9,14 @@
 # Required: fill in [da] paths below for your site / experiment.
 # ------------------------------------------------------------------
 
+# submission
+[submission]
+bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin"
+precision = "R64"
+
+[system]
+assimilation_input_definition = "@CYCLE@/assimilation.json"
+
 [suite_control]
   do_assimilation = true
 
@@ -18,7 +26,8 @@
 [da]
   # Root directory for pre-processed observation files (OPLACE / local)
   # Expected layout: <obs_dir>/YYYY/MM/DD/<obstype_filename>[.gz]
-  obs_dir = "@SCRATCH@/da/@CASE@/obs"
+  # obs_dir = "@SCRATCH@/da/@CASE@/obs"
+  obs_dir = "/scratch/sis/da/namelists/"
 
   # Per-cycle scratch store for intermediate DA files (ODB, CCMA, analyses)
   scratch = "@SCRATCH@/da/@CASE@/scratch"
@@ -26,13 +35,14 @@
   # Directory containing DA constants:
   #   B-matrix (stabal96.cv/bal), error files (errgrib*),
   #   RTTOV coefficients, blacklists (LISTE_NOIRE_DIAP, LISTE_LOC), etc.
-  const_dir = "@SCRATCH@/da/const"
+  #const_dir = "@SCRATCH@/da/const"
+  const_dir =  "/scratch/sis/da/const/"
 
   # Directory containing DA namelists:
   #   aldnml_canari, aldnml_screen, aldnml_minim,
   #   aldnml_bator, aldnml_lamflag_<domain>, aldnml_rgb, etc.
-  namelist_dir = "@SCRATCH@/da/namelists"
-
+  #namelist_dir = "@SCRATCH@/da/namelists"
+  namelist_dir = "/scratch/sis/da/namelists"
   # Short-range background (first-guess) directory.
   # Expected files: <guess_dir>/YYYY/MM/DD/guess.YYYYMMDDRR[.gz]
   guess_dir = "@SCRATCH@/da/@CASE@/guess"
@@ -49,7 +59,7 @@
   rttov_coef_dir = "@RTTOV_COEFDIR@"
 
   # Number of ODB pools used by BATOR / SHUFFLE
-  nbpool = 12
+  nbpool = 16
 
   # Cold-start basetime (YYYYMMDDRR): skips VARBC / first-guess checks.
   # Set to the first cycle of a new experiment.
@@ -64,7 +74,7 @@
   # Observation types for 3D-Var upper-air analysis
   obs_types_3dvar = [
     "synop", "gpssol",
-    "amdr", "geowind", "hrwind", "temp", "wp",
+    "amdr", "geowind", "temp", "wp",
     "seviri", "amsua", "amsub", "iasi", "ascat",
   ]
 
@@ -126,7 +136,7 @@ obs_step = 60
 [da.providers.LACE.synop]
 
 candidates = [
-  "obsoul_1_xxxxxx_hu_{ymdrr}"
+  "obsoul_1_xxxxxx_hu_{ymdrr}",
   "obsoul_1_xxxxxy_hu_{ymdrr}",
   "obsoul_1_xxxxxy_at_{ymdrr}",
   "obsoul_1_xxxxxy_cz_{ymdrr}",
@@ -158,10 +168,6 @@ local_name  = "OBSOUL.temp"
 [da.providers.LACE.wp]
 candidates = ["obsoul_6_xxxxxx_xx_{ymdrr}"]
 local_name  = "OBSOUL.wp"
-
-[da.providers.LACE.gpssol]
-candidates = ["bufr_1_ztd_egvap_{ymdrr}"]
-local_name  = "BUFR.gpssol"
 
 [da.providers.LACE.amsua]
 candidates = [
@@ -222,10 +228,6 @@ local_name  = "OBSOUL.amdr"
 [da.providers.UWC.geowind]
 candidates = ["obsoul_3_xxxxxx_xx_{ymdrr}"]
 local_name  = "OBSOUL.geowind"
-
-[da.providers.UWC.hrwind]
-candidates = ["obsoul_3_xxxxxx_hr_{ymdrr}"]
-local_name  = "OBSOUL.hrwind"
 
 [da.providers.UWC.temp]
 candidates = ["obsoul_5_xxxxxx_xx_{ymdrr}"]
@@ -300,44 +302,62 @@ obs_step = 60
 # Point to the directory that contains BATOR, BLENDSUR,
 # shuffle, create_ioassign, ioassign, and merge_ioassign.
 [submission.task_exceptions.Bator]
-  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin"
+  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin_gmkpack"
   NPROC  = 1
 
 [submission.task_exceptions.Bator.BATCH]
   NTASKS   = "#SBATCH --ntasks=1"
   WALLTIME = "#SBATCH --time=00:10:00"
 
+[submission.task_exceptions.Bator.MODULES]
+  01_INTEL = ["load", "intel/2023.2.0"]
+
 [submission.task_exceptions.Bator.ENV]
   DR_HOOK_ASSERT_MPI_INITIALIZED = "0"
 
 # ---- OdbMerge (shuffle + merge_ioassign) ----
 [submission.task_exceptions.OdbMerge]
-  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin"
+  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin_gmkpack"  
   NPROC  = 1
 
 [submission.task_exceptions.OdbMerge.BATCH]
   NTASKS   = "#SBATCH --ntasks=1"
   WALLTIME = "#SBATCH --time=00:15:00"
 
+[submission.task_exceptions.OdbMerge.MODULES]
+  01_INTEL = ["load", "intel/2023.2.0"]
+
 # ---- Canari (MASTERODB conf 701, surface OI) ----
 [submission.task_exceptions.Canari]
-  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin"
+  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin_gmkpack"
   NPROC  = 16
 
 [submission.task_exceptions.Canari.BATCH]
   NODES    = "#SBATCH --nodes=1"
   NTASKS   = "#SBATCH --ntasks=16"
   WALLTIME = "#SBATCH --time=00:30:00"
+  QOS = "#SBATCH --qos=np"
+  MEM = "#SBATCH --mem=120000MB"
+
+[submission.task_exceptions.Canari.MODULES]
+  01_INTEL = ["load", "intel/2023.2.0"]
+  OPENMPI = ["load", "openmpi/4.1.1.1"]
+
+
+
 
 # ---- BlendSur (serial BLENDSUR utility) ----
 [submission.task_exceptions.BlendSur]
-  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin"
+  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin_gmkpack"
   binary = "BLENDSUR"
   NPROC  = 1
 
 [submission.task_exceptions.BlendSur.BATCH]
   NTASKS   = "#SBATCH --ntasks=1"
   WALLTIME = "#SBATCH --time=00:10:00"
+
+[submission.task_exceptions.BlendSur.MODULES]
+  01_INTEL = ["load", "intel/2023.2.0"]
 
 # ------------------------------------------------------------------
 # Surface-only DA mode
@@ -353,45 +373,32 @@ obs_step = 60
 # OOPS-based 3D-Var (upper-air analysis via OOVAR)
 # ------------------------------------------------------------------
 
-# [da.oops]
-#   namelist_dir = "@SCRATCH@/da/oops_namelists"
+ [da.oops]
+#   namelist_dir = "@SCRATCH@/da/namelists"
+   namelist_dir = "/scratch/sis/da/namelists/"
 #
 #   # Minimization inner-loop settings
 #   niter    = 66
 #   nsimu    = 69
 #   rednmc   = 0.5
 #
-#   # Geometry / MPI decomposition — must match submission.task_exceptions.OopsVar
-#   nproma   = -32
-#   nprgpns  = 128
-#   nprgpew  = 1
-#   nprtrv   = 1
-#   nprtrw   = 128
-#   nstrin   = 2
-#   nstrout  = 2
-#
-#   # JK spectral transform parameters
-#   lejk       = false
-#   nsmaxjk    = 215
-#   alphakt    = 0.70
-#   alphakvor  = 0.80
-#   alphakdiv  = 0.10
-#   alphakq    = 0.04
-#   alphakp    = 0.0
-#   presinfjk  = 100500.0
-#   presupjk   = 98000.0
-#   ntruncjk   = 8
 
 # ---- OopsVar (OOPS-based 3D-Var, single OOVAR call) ----
 [submission.task_exceptions.OopsVar]
-  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin"
+  bindir = "/perm/sis/tactus_bin/@CYCLE@/@COMPILER@/@PRECISION@/bin_gmkpack"
   NPROC  = 128
 
 [submission.task_exceptions.OopsVar.BATCH]
   NODES       = "#SBATCH --nodes=10"
   NTASKS      = "#SBATCH --ntasks=128"
+  QOS         = "#SBATCH --qos=np"
   HINT        = "#SBATCH --hint=nomultithread"
   WALLTIME    = "#SBATCH --time=01:00:00"
+
+[submission.task_exceptions.OopsVar.MODULES]
+  01_INTEL = ["load", "intel/2023.2.0"]
+  MPIPACKAGE1 = ["unload", "hpcx-openmpi/2.9.0"]
+  MPIPACKAGE2 = ["load", "openmpi/4.1.1.1"]
 
 # ---- Screen (MASTERODB observational screening, OpenMP) ----
 [submission.task_exceptions.Screen]

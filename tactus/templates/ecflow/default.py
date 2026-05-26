@@ -2,7 +2,10 @@
 
 import os
 
-import ecflow as ecf
+try:
+    import ecflow as ecf
+except ModuleNotFoundError:
+    ecf = None
 
 from tactus.config_parser import ConfigParserDefaults, GeneralConstants, ParsedConfig
 from tactus.derived_variables import derived_variables
@@ -16,7 +19,7 @@ from tactus.tasks.discover_task import get_task
 logger.enable(GeneralConstants.PACKAGE_NAME)
 
 
-def query_ecflow_variable(client: ecf.Client, ecf_name: str, variable: str):
+def query_ecflow_variable(client, ecf_name: str, variable: str):
     """Query ecflow variable from client.
 
     Args:
@@ -57,6 +60,7 @@ def parse_ecflow_vars():
         "TACTUS_HOME": os.environ["TACTUS_HOME"],
         "KEEP_WORKDIRS": os.environ["KEEP_WORKDIRS"],
         "MEMBER": os.environ["MEMBER"],
+        "TACTUS_TASK": os.environ.get("TACTUS_TASK", ""),
     }
 
 
@@ -80,7 +84,7 @@ def default_main(kwargs: dict):
 
     args = kwargs.get("ARGS")
     args_dict = {}
-    if args != "":
+    if args:
         for arg in args.split(";"):
             parts = arg.split("=")
             if len(parts) == 2:
@@ -119,6 +123,7 @@ def default_main(kwargs: dict):
         member = int(member)
     except (TypeError, ValueError):
         logger.debug("MEMBER is not an integer, skipping eps setup for task {}", task)
+        config = config.copy(update={"general": {"use_member_stand_alone": False}})
     else:
         # Update config based on member
         config = get_member_config(config, member=member)

@@ -1,39 +1,4 @@
 """OopsVar task — OOPS-based 3D-Var (screening + minimization via OOVAR).
-
-Replaces the classic two-step Screen + Minim MASTERODB pair with a single
-``OOVAR oops.json`` execution.  Active when ``da.do_upper_air = true`` (the default).
-
-OOPS namelist directory
------------------------
-The task reads namelist *templates* from ``da.oops.namelist_dir``.  Unlike
-the MASTERODB-based tasks, OOPS uses many small named files rather than a
-single ``fort.4``.  The following files are expected in that directory:
-
-``namelist_oopsminim``
-    Main minimization namelist template.  Placeholders ``{NBPROC}``,
-    ``{NPRTRV}``, ``{NPRTRW}``, ``{NSTRIN}``, ``{NSTROUT}``,
-    ``{NPROMA}``, ``{NPRGPEW}``, ``{NPRGPNS}``, ``{niter}``,
-    ``{nsimu}``, ``{rednmc}``, ``{LEJK}``, ``{LSPRT}``, ``{qlsp}``,
-    ``{qlgp}``, ``{NSMAXJK}``, ``{ALPHAKT}``, ``{ALPHAKVOR}``,
-    ``{ALPHAKDIV}``, ``{ALPHAKQ}``, ``{ALPHAKP}``, ``{PRESINFJK}``,
-    ``{PRESUPJK}``, ``{NTRUNCJK}`` are substituted from config.
-
-``oops_3dvar.json``
-    OOPS control JSON template.  Placeholders ``{yyyy}``, ``{mm}``,
-    ``{dd}``, ``{hh}`` are substituted with the basetime date parts.
-
-``namelist_standard_geometry``, ``namelist_geometry_tENS``
-    Geometry namelists.  Placeholder ``{nproma}`` is substituted.
-
-``namelist_bmatrix_3dvar``, ``namelist_observations_tlad``,
-``namelist_observations``, ``namelist_traj_model``,
-``namelist_linear_model``, ``namelist_nonlinear_model``,
-``namelist_oops_write_spec``, ``namelist_write_analysis``,
-``namelist_gom_setup_hres``, ``namelist_gom_setup``
-    Linked as-is (no substitution) to the names expected by OOVAR.
-
-``iasichannels``
-    IASI channel selection file, copied from the OOPS namelist dir.
 """
 import datetime
 import glob
@@ -154,19 +119,31 @@ class OopsVar(Task):
                 f"OopsVar: merged ECMA ODB not found at {odb_dir}"
             )
         shutil.copytree(odb_dir, "ECMA", symlinks=True)
+        # Symlink subtype ECMAs alongside ECMA so the IOASSIGN paths
+        # using $ODB_DATAPATH_ECMA/../ECMA.{obstype} resolve correctly.
+        archive_dir = os.path.dirname(odb_dir)
+        for entry in sorted(os.listdir(archive_dir)):
+            if entry.startswith("ECMA.") and os.path.isdir(
+                os.path.join(archive_dir, entry)
+            ):
+                if not os.path.lexists(entry):
+                    os.symlink(os.path.join(archive_dir, entry), entry)
 
         # --- CCMA skeleton via create_ioassign (serial) ---
         os.makedirs("CCMA", exist_ok=True)
         rte_setup = dict(os.environ)
         rte_setup["PATH"] = f"{os.getcwd()}:{rte_setup.get('PATH', '')}"
         BatchJob(rte_setup, wrapper="").run(f"./create_ioassign -lCCMA -n{nproc}")
-        # Merge IOASSIGN so OOVAR can read both ECMA and write CCMA
+        # Merge IOASSIGN: append CCMA entries into ECMA/IOASSIGN, then use
+        # the combined file as the single IOASSIGN so OOVAR can both read
+        # ECMA and write CCMA.  Always overwrite ./IOASSIGN (which currently
+        # holds only CCMA entries from create_ioassign).
         if os.path.isfile("IOASSIGN") and os.path.isfile("ECMA/IOASSIGN"):
             with open("ECMA/IOASSIGN", "a") as ecma_io, open("IOASSIGN") as ccma_io:
                 ecma_io.write(ccma_io.read())
-        for dest in ("CCMA/IOASSIGN", "IOASSIGN"):
-            if os.path.isfile("ECMA/IOASSIGN") and not os.path.isfile(dest):
-                shutil.copy2("ECMA/IOASSIGN", dest)
+        if os.path.isfile("ECMA/IOASSIGN"):
+            shutil.copy2("ECMA/IOASSIGN", "CCMA/IOASSIGN")
+            shutil.copy2("ECMA/IOASSIGN", "IOASSIGN")
 
         # --- first guess from BlendSur ---
         if not os.path.isfile(surface_file):
@@ -202,7 +179,7 @@ class OopsVar(Task):
                 logger.warning("OopsVar: B-matrix file not found: {}", src)
 
         # --- constant links ---
-        const_globs = ["ATLAS_*", "ATLAS*", "errgrib*", "MCICA", "RAD*", "amv_*",
+        const_globs = ["ATLAS_*", "ATLAS*", "errgrib*", "ECOZC", "MCICA", "RAD*", "amv_*",
                        "bcor_noaa.dat", "bcor_meto.dat"]
         for pattern in const_globs:
             for src in glob.glob(os.path.join(self.da_const_dir, pattern)):
@@ -298,9 +275,12 @@ class OopsVar(Task):
         """Generate / link all OOPS namelist files from da.oops.namelist_dir."""
         nd = self.oops_namelist_dir
 
-        # Substitution dict for the main minimization namelist template
+        # Substitution dict for the main minimization namelist template.
+        # "NBPROC" (no braces) handles the namelist_oops_leftovers style where
+        # all parallelism settings are written as bare NBPROC.
         subst = {
             "{NBPROC}":    str(nproc),
+            "NBPROC":      str(nproc),
             "{NPRTRV}":    str(self.nprtrv),
             "{NPRTRW}":    str(self.nprtrw),
             "{NSTRIN}":    str(self.nstrin),
@@ -326,47 +306,56 @@ class OopsVar(Task):
             "{NTRUNCJK}":  str(self.ntruncjk),
         }
 
-        # fort.4 from namelist_oopsminim template
+        # fort.4 from namelist_oops_leftovers template
         self._fill_template(
-            os.path.join(nd, "namelist_oopsminim"), "fort.4", subst
+            os.path.join(nd, "namelist_oops_leftovers"), "fort.4", subst
         )
 
-        # Geometry namelists with NPROMA substitution
+        # naml_observations uses the same NBPROC substitution as fort.4
+        obs_src = os.path.join(nd, "naml_observations")
+        if os.path.isfile(obs_src):
+            self._fill_template(obs_src, "naml_observations", subst)
+        else:
+            logger.warning("OopsVar: naml_observations not found, skipping")
+
+        # Geometry namelists — NPROMA may be hardcoded in the file; substitution
+        # is a no-op in that case but harmless.
         geom_subst = {"{nproma}": str(self.nproma)}
         self._fill_template(
-            os.path.join(nd, "namelist_standard_geometry"),
+            os.path.join(nd, "naml_standard_geometry"),
             "naml_standard_geometry",
             geom_subst,
         )
-        self._fill_template(
-            os.path.join(nd, "namelist_geometry_tENS"),
-            "naml_standard_geometry_tENS",
-            geom_subst,
-        )
+        # geometry_tENS is only needed for 3D-EnVar; skip with a warning if absent
+        tENS_src = os.path.join(nd, "naml_geometry_tENS")
+        if os.path.isfile(tENS_src):
+            self._fill_template(tENS_src, "naml_standard_geometry_tENS", geom_subst)
+        else:
+            logger.warning("OopsVar: namelist_geometry_tENS not found, skipping (3D-Var only)")
 
-        # OOPS JSON from oops_3dvar.json template (date substitution)
+        # OOPS JSON — written as oops.json; date placeholders substituted if present
         json_subst = {
             "{yyyy}": yyyy,
             "{mm}":   mm,
             "{dd}":   dd,
             "{hh}":   rr,
+            "{{now.iso8601()}}": f"{yyyy}-{mm}-{dd}T{rr}:00:00Z",
         }
         self._fill_template(
-            os.path.join(nd, "oops_3dvar.json"), "oops.json", json_subst
+            os.path.join(nd, "3dvar.json"), "oops.json", json_subst
         )
 
         # Namelists linked as-is (no substitution)
         link_map = {
-            "namelist_bmatrix_3dvar":     "naml_bmatrix",
-            "namelist_observations_tlad": "naml_observations_tlad",
-            "namelist_observations":      "naml_observations",
-            "namelist_traj_model":        "naml_traj_model",
-            "namelist_linear_model":      "naml_linear_model",
-            "namelist_nonlinear_model":   "naml_nonlinear_model",
-            "namelist_oops_write_spec":   "naml_oops_write_spec",
-            "namelist_write_analysis":    "naml_write_analysis",
-            "namelist_gom_setup_hres":    "namelist_gom_setup_hres",
-            "namelist_gom_setup":         "namelist_gom_setup",
+            "naml_bmatrix":           "naml_bmatrix",
+            "naml_observations_tlad": "naml_observations_tlad",
+            "naml_traj_model":        "naml_traj_model",
+            "naml_linear_model":      "naml_linear_model",
+            "naml_nonlinear_model":   "naml_nonlinear_model",
+            "naml_oops_write_spec":   "naml_oops_write_spec",
+            "naml_write_analysis":    "naml_write_analysis",
+            "namelist_gom_setup_hres": "namelist_gom_setup_hres",
+            "namelist_gom_setup":      "namelist_gom_setup",
         }
         for src_name, link_name in link_map.items():
             src = os.path.join(nd, src_name)
