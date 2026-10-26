@@ -1,6 +1,6 @@
 {
   "oopsvar_const": {
-    "path": "@DA.CONST_DIR@",
+    "path": "@DA_CONST_DIR@",
     "files": [
       "ATLAS_AN1.BIN",
       "ATLAS_AN2.BIN",
@@ -64,7 +64,7 @@
     ]
   },
   "bmatrix": {
-    "path": "@DA.CONST_DIR@/@DOMAIN@",
+    "path": "@DA_CONST_DIR@/@DOMAIN@",
     "files": [
       "stabal96.bal",
       "stabal96.cv",
@@ -72,7 +72,7 @@
     ]
   },
   "rttov_coefficients": {
-    "path": "@DA.RTTOV_COEF_DIR@",
+    "path": "@RTTOV_COEFDIR@",
     "files": [
       "rtcoef_dmsp_13_ssmi.H5",
       "rtcoef_dmsp_16_ssmis.H5",
@@ -169,7 +169,7 @@
     ]
   },
   "ir_emissivity_atlas": {
-    "path": "@DA.CONST_DIR@/ir_atlas",
+    "path": "@DA_CONST_DIR@/ir_atlas",
     "files": [
       "UWirbfemis_COEF_V2.1_0.1deg_200701_mask.H5",
       "UWirbfemis_COEF_V2.1_0.1deg_200702_mask.H5",

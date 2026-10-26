@@ -212,7 +212,16 @@
 [submission.types.parallel]
   NPROC = 32
   SCHOST = "hpc"
-  tasks = ["Forecast", "E927", "Pgd", "Prep", "C903", "IALBundleBuild", "Canari", "OopsVar"]
+  tasks = [
+    "Forecast",
+    "E927",
+    "Pgd",
+    "Prep",
+    "C903",
+    "IALBundleBuild",
+    "Canari",
+    "OopsVar"
+  ]
   WRAPPER = "srun"
 
 [submission.types.parallel.BATCH]

@@ -581,6 +581,11 @@
           "type": "string",
           "description": "Location of host model climate files used for e927/c903"
         },
+        "dadir": {
+          "description": "Data assimilation specific work area.",
+          "type": "string",
+          "default": "@CASEDIR@/da/@YYYY@/@MM@/@DD@/@HH@/@MEMBER_STR@"
+        },
         "wrk": {
           "type": "string",
           "description": "Location of date specific working directory",

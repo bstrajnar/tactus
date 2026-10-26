@@ -55,7 +55,7 @@ class OdbMerge(Task):
         """
         Task.__init__(self, config, __class__.__name__)
         self.basetime = as_datetime(config["general.times.basetime"])
-        self.da_scratch = config["da.scratch"]
+        self.da_dir = self.platform.get_system_value("dadir")
 
         self.obs = Observations(config)
         logger.debug(
@@ -68,7 +68,7 @@ class OdbMerge(Task):
         """Merge BATOR subbases and archive merged ECMA ODB."""
         (yyyy, mm, dd, hh) = split_date(self.basetime)
         bator_base_dir = self.platform.substitute(
-            os.path.join(self.da_scratch, self.obs.family, "odb")
+            os.path.join(self.da_dir, self.obs.family, "odb")
         )
         # --- locate binaries ---
         shuffle_bin = self.get_binary("shuffle")
@@ -188,7 +188,7 @@ class OdbMerge(Task):
         # ECMA.iomap references ../ECMA.{obstype}/ relative to ECMA/, so
         # subbases must be archived alongside ECMA as siblings.
         archive_subdir = f"{self.obs.family}/odbmerge"
-        out_dir = self.platform.substitute(os.path.join(self.da_scratch, archive_subdir))
+        out_dir = self.platform.substitute(os.path.join(self.da_dir, archive_subdir))
         tactusmakedirs(out_dir)
         for src_name in ["ECMA"] + [f"ECMA.{b}" for b in bases_to_merge]:
             dst = os.path.join(out_dir, src_name)

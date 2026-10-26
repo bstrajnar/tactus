@@ -37,7 +37,7 @@ class OopsVar(Task):
     """Run the OOPS 3D-Var on the merged upper-air ECMA ODB.
 
     The background is the BlendSur output. The analysis ``ICMSHOOPS+0000`` and
-    the updated ``VARBC.cycle`` are archived to ``<da.scratch>/upper_air/oopsvar``.
+    the updated ``VARBC.cycle`` are archived to ``<dadir>/upper_air/oopsvar``.
     """
 
     def __init__(self, config):
@@ -49,7 +49,7 @@ class OopsVar(Task):
         """
         Task.__init__(self, config, __class__.__name__)
         self.basetime = as_datetime(config["general.times.basetime"])
-        self.da_scratch = config["da.scratch"]
+        self.da_dir = self.platform.get_system_value("dadir")
         self.varbc_init_dir = config.get("da.varbc_init_dir", "")
         self.rttov_coef_dir = config["da.rttov_coef_dir"]
         self.bgcycle = config.get("da.bgcycle", "")
@@ -60,9 +60,9 @@ class OopsVar(Task):
     def execute(self):
         """Run OOVAR and archive the analysis and VarBC coefficients."""
         (yyyy, mm, dd, hh) = split_date(self.basetime)
-        da_scratch = self.platform.substitute(self.da_scratch)
-        odb_dir = os.path.join(da_scratch, self.obs.family, "odbmerge")
-        out_dir = os.path.join(da_scratch, self.obs.family, "oopsvar")
+        da_dir = self.platform.substitute(self.da_dir)
+        odb_dir = os.path.join(da_dir, self.obs.family, "odbmerge")
+        out_dir = os.path.join(da_dir, self.obs.family, "oopsvar")
         nproc = int(os.environ.get("NPROC", self.obs.nbpool))
 
         oovar = self.get_binary("ifs4dvar.DP")
@@ -82,7 +82,7 @@ class OopsVar(Task):
 
         # --- background: the blended surface analysis ---
         background = os.path.join(
-            da_scratch, "surface", "blendsur", "ICMSHANAL+0000_updated_surface"
+            da_dir, "surface", "blendsur", "ICMSHANAL+0000_updated_surface"
         )
         # OOVAR writes the analysis into a copy of the background
         self.fmanager.input(background, "ICMSHOOPS+0000", provider_id="copy")
@@ -207,7 +207,7 @@ class OopsVar(Task):
         candidates = [
             os.path.join(
                 self.platform.substitute(
-                    self.da_scratch, basetime=previous, validtime=previous
+                    self.da_dir, basetime=previous, validtime=previous
                 ),
                 self.obs.family,
                 "oopsvar",

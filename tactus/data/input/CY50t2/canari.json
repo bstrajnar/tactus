@@ -8,7 +8,7 @@
     }
   },
   "canari_const": {
-    "path": "@DA.CONST_DIR@",
+    "path": "@DA_CONST_DIR@",
     "files": {
       "fort.61": "POLYNOMES_ISBA",
       "amv_p_and_tracking_error": "amv_p_and_tracking_error"

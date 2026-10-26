@@ -1,10 +1,5 @@
 [da]
-  scratch = "@CASEDIR@/da/@YYYY@/@MM@/@DD@/@HH@/@MEMBER_STR@"
   obs_provider = "LACE"
-  # Constants for Canari and OopsVar
-  const_dir = "/perm/sis/da/const"
-  rttov_coef_dir = "@DA.CONST_DIR@/rttov"
-  varbc_init_dir = "/perm/sis/da/varbc_init"
 
 [da.surface]
   method = "CANARI"

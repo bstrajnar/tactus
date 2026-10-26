@@ -21,7 +21,7 @@ from .batch import BatchJob
 class BlendSur(Task):
     """Blend the CANARI surface analysis with the LBC SST using BLENDSUR.
 
-    The result is archived to ``<da.scratch>/surface/blendsur``.
+    The result is archived to ``<dadir>/surface/blendsur``.
     """
 
     def __init__(self, config):
@@ -33,7 +33,7 @@ class BlendSur(Task):
         """
         Task.__init__(self, config, __class__.__name__)
         self.basetime = as_datetime(config["general.times.basetime"])
-        self.da_scratch = config["da.scratch"]
+        self.da_dir = self.platform.get_system_value("dadir")
         self.intp_bddir = config["system.intp_bddir"]
         self.lbc_template = config["file_templates.interpolated_boundaries.archive"]
         self.obs = Observations(config)
@@ -42,8 +42,8 @@ class BlendSur(Task):
 
     def execute(self):
         """Run the two BLENDSUR steps and archive the blended analysis."""
-        da_scratch = self.platform.substitute(self.da_scratch)
-        canari_dir = os.path.join(da_scratch, self.obs.family, "canari")
+        da_dir = self.platform.substitute(self.da_dir)
+        canari_dir = os.path.join(da_dir, self.obs.family, "canari")
 
         self.fmanager.input(self.get_binary("BLENDSUR"), "BLENDSUR")
 
@@ -69,7 +69,7 @@ class BlendSur(Task):
                     )
 
         # --- archive output ---
-        out_dir = os.path.join(da_scratch, self.obs.family, "blendsur")
+        out_dir = os.path.join(da_dir, self.obs.family, "blendsur")
         tactusmakedirs(out_dir)
         output_file = os.path.join(out_dir, "ICMSHANAL+0000_updated_surface")
         self.fmanager.output("AL_A", output_file, provider_id="copy")

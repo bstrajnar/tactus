@@ -150,5 +150,6 @@
   bddir_sst = "@BDDIR@"
   casedir = "@SCRATCH@/@SYS_NAME@/@CASE@"
   climdir = "@CASEDIR@/climate/@DOMAIN@"
+  dadir = "@CASEDIR@/da/@DOMAIN@/@YYYY@/@MM@/@DD@/@HH@/@MEMBER_STR@"
   logs = "@ARCHIVE_ROOT@/logs"
   prev_case = "@CASE@"

@@ -82,7 +82,7 @@ class ObsPrep(Task):
         Task.__init__(self, config, __class__.__name__)
         self.basetime = as_datetime(config["general.times.basetime"])
         self.obs_dir = config["platform.obs_dir"]
-        self.da_scratch = self.config["da.scratch"]
+        self.da_dir = self.platform.get_system_value("dadir")
         self.obs = Observations(config)
 
         self.obsoul_merge_script = self.platform.substitute(
@@ -131,7 +131,7 @@ class ObsPrep(Task):
         with open(obstypes_file, "w") as fh:
             fh.write("\n".join(available_types) + "\n")
         out_dir = os.path.join(
-            self.platform.substitute(self.da_scratch), f"{self.obs.family}/obsprep"
+            self.platform.substitute(self.da_dir), f"{self.obs.family}/obsprep"
         )
         tactusmakedirs(out_dir)
         logger.info(

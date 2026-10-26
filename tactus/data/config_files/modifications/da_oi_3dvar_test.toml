@@ -10,16 +10,9 @@
 [da.upper_air]
   active = true
 
-[platform]
-  obs_dir = "/scratch/sis/da/obs/@YYYY@/@MM@/@DD@"
-
 [submission]
   bindir = "/ec/res4/scratch/sis/install/pr/intel/bin/"
   precision = "R64"
-
-[suite_control]
-  do_assimilation = true
-  mode = "start"
 
 [submission.task_exceptions.Canari]
   NPROC = 16
@@ -30,8 +23,9 @@
   NTASKS = "#SBATCH --ntasks=16"
   WALLTIME = "#SBATCH --time=00:30:00"
 
+[suite_control]
+  do_assimilation = true
+  mode = "start"
+
 [domain]
   tstep = 50
-
-
-

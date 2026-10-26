@@ -37,7 +37,7 @@ class OdbIngestionTask(Task):
         """
         Task.__init__(self, config, self.__class__.__name__)
         self.basetime = as_datetime(config["general.times.basetime"])
-        self.da_scratch = config["da.scratch"]
+        self.da_dir = self.platform.get_system_value("dadir")
         self.da_const_dir = self.platform.get_platform_value("da_const_dir")
         self.domain = config["domain.name"]
         self.obstype = config.get("task.args.obstype", "")
@@ -52,7 +52,7 @@ class OdbIngestionTask(Task):
     def execute(self):
         """Run the configured obs-ingestion binary for *self.obstype*."""
         obsprep_dir = os.path.join(
-            self.platform.substitute(self.da_scratch), f"{self.obs.family}/obsprep"
+            self.platform.substitute(self.da_dir), f"{self.obs.family}/obsprep"
         )
 
         bin_path = self.get_binary(self._BINARY_NAME)
@@ -181,7 +181,7 @@ class OdbIngestionTask(Task):
         # Use stream-specific subdirectory so surface (16-pool) and upper-air (128-pool)
         # archives don't overwrite each other when both streams process the same obstype.
         out_dir = os.path.join(
-            self.platform.substitute(self.da_scratch),
+            self.platform.substitute(self.da_dir),
             self.obs.family,
             "odb",
             self.obstype,
@@ -303,8 +303,8 @@ class OdbIngestionTask(Task):
         # disagreed about where an observation sits on the grid.
         lat0_raw = self.config.get("domain.xlat0", "")
         lon0_raw = self.config.get("domain.xlon0", "")
-        lat0 = float(lat0_raw) if lat0_raw != "" and lat0_raw is not None else latc
-        lon0 = float(lon0_raw) if lon0_raw != "" and lon0_raw is not None else lonc
+        lat0 = float(lat0_raw) if lat0_raw and lat0_raw is not None else latc
+        lon0 = float(lon0_raw) if lon0_raw and lon0_raw is not None else lonc
 
         redzone = float(self.config.get("da.bator_redzone", 50.0))
         canzone = float(self.config.get("da.bator_canzone", 1500.0))
@@ -347,9 +347,7 @@ class OdbIngestionTask(Task):
         # OFF BY DEFAULT, because the rest of this chain cannot place them:
         # obatabs.F90 assigns trlat/trlon only to observations inside C+I, so
         # halo observations reach MKGLOBSTAB_MODEL with lat=lon=0 and abort it
-        # with "IWRONG1 NE 0". Enable deliberately with
-        #     [da.surface]
-        #       canari_halo = true
+        # with "IWRONG1 NE 0". Enable deliberately with canari_halo = true in [da.surface]
         # once the downstream side can handle unplaced observations.
         # Only ever applies to the surface stream; upper-air screening is
         # always the VAR branch (LVAR=.T.).

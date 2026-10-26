@@ -1,6 +1,6 @@
 {
   "obs_ingest": {
-    "path": "@DA_CONST_DIR@",
+    "path": "@BATOR_DIR@",
     "files": [
       {
         "param_@ODBCONVERTER@.cfg": "param.cfg"

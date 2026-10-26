@@ -68,7 +68,7 @@ def canari_namelists(config):
 class Canari(Task):
     """Run the CANARI surface OI analysis on the merged surface ECMA ODB.
 
-    The analysis is archived to ``<da.scratch>/surface/canari``.
+    The analysis is archived to ``<dadir>/surface/canari``.
     """
 
     def __init__(self, config):
@@ -80,15 +80,15 @@ class Canari(Task):
         """
         Task.__init__(self, config, __class__.__name__)
         self.basetime = as_datetime(config["general.times.basetime"])
-        self.da_scratch = config["da.scratch"]
+        self.da_dir = self.platform.get_system_value("dadir")
         self.obs = Observations(config)
         logger.debug("Constructed Canari task")
 
     def execute(self):
         """Run CANARI and archive the surface analysis."""
         (yyyy, mm, dd, hh) = split_date(self.basetime)
-        da_scratch = self.platform.substitute(self.da_scratch)
-        odb_dir = os.path.join(da_scratch, self.obs.family, "odbmerge")
+        da_dir = self.platform.substitute(self.da_dir)
+        odb_dir = os.path.join(da_dir, self.obs.family, "odbmerge")
 
         masterodb = self.get_binary("MASTERODB")
         self.fmanager.input(masterodb, "MASTERODB")
@@ -179,7 +179,7 @@ class Canari(Task):
             raise RuntimeError(f"Canari: {output_file} not produced or empty.")
 
         # --- archive output ---
-        out_dir = os.path.join(da_scratch, self.obs.family, "canari")
+        out_dir = os.path.join(da_dir, self.obs.family, "canari")
         tactusmakedirs(out_dir)
         for fname in [output_file, f"{output_file}.sfx"]:
             self.fmanager.output(fname, os.path.join(out_dir, fname), provider_id="copy")

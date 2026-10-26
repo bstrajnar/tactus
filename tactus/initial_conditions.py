@@ -145,13 +145,13 @@ class InitialConditions(object):
         if not self.config.get("da.use_analysis", True):
             return
 
-        da_scratch = self.platform.substitute(self.config["da.scratch"])
+        da_dir = self.platform.get_system_value("dadir")
         candidates = []
         if self.config.get("da.upper_air.active", False):
-            candidates.append(f"{da_scratch}/upper_air/oopsvar/ICMSHOOPS+0000")
+            candidates.append(f"{da_dir}/upper_air/oopsvar/ICMSHOOPS+0000")
         candidates += [
-            f"{da_scratch}/surface/blendsur/ICMSHANAL+0000_updated_surface",
-            f"{da_scratch}/surface/canari/ICMSHANAL+0000",
+            f"{da_dir}/surface/blendsur/ICMSHANAL+0000_updated_surface",
+            f"{da_dir}/surface/canari/ICMSHANAL+0000",
         ]
         for candidate in candidates:
             if os.path.isfile(candidate):
@@ -161,7 +161,7 @@ class InitialConditions(object):
         else:
             logger.warning("No analysis found, using the first guess {}", self.source)
 
-        sfx_analysis = f"{da_scratch}/surface/canari/ICMSHANAL+0000.sfx"
+        sfx_analysis = f"{da_dir}/surface/canari/ICMSHANAL+0000.sfx"
         if os.path.isfile(sfx_analysis):
             logger.info("Using surface analysis {}", sfx_analysis)
             self.source_sfx = sfx_analysis
