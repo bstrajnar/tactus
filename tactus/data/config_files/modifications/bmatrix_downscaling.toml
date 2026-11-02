@@ -1,0 +1,29 @@
+# Downscaling ensemble of IFS ENS members followed by FESTAT, giving a first
+# B matrix (stabal96.*) for the domain. Every cycle starts from the
+# interpolated boundaries of its member (cold start), without assimilation.
+# Use on top of a model configuration, e.g.
+#   tactus case ?tactus/data/config_files/configurations/cy50t2_arome \
+#     tactus/data/config_files/modifications/bmatrix_downscaling.toml
+
+[general.times]
+  start = "2025-02-09T00:00:00Z"
+  end = "2025-02-09T03:00:00Z"
+  cycle_length = "PT3H"
+  forecast_range = "PT3H"
+
+[suite_control]
+  suite_definition = "BMatrixSuiteDefinition"
+  mode = "cold_start"
+  do_assimilation = false
+
+[boundaries.ifs]
+  selection = "IFSENS"
+
+[eps.general]
+  members = "0:4"
+
+[eps.member_settings.boundaries.ifs]
+  bdmember = "0:4"
+
+[bmatrix]
+  lead_time = "PT3H"

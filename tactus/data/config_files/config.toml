@@ -22,6 +22,12 @@
   forecast_range = "PT6H"
   start = "2025-02-09T00:00:00Z"
 
+[bmatrix]
+  # Used by BMatrixSuiteDefinition / the Festat task. Without bmatrix.members
+  # all eps.general.members are used, without bmatrix.lead_time the forecast
+  # range. The stabal96.* files are what OopsVar reads from @DA.CONST_DIR@/@DOMAIN@.
+  outdir = "@ARCHIVE_ROOT@/bmatrix/@DOMAIN@"
+
 [boundaries]
   bd_has_surfex = false
   bdint = "PT1H"

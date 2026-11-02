@@ -11,24 +11,16 @@
   active = true
 
 [platform]
-  obs_dir = "/scratch/sis/da/obs/@YYYY@/@MM@/@DD@"
-
-[submission]
-  bindir = "/ec/res4/scratch/sis/install/pr/intel/bin/"
-  precision = "R64"
+  obs_dir = "/home/bstrajnar/data/observations/@YYYY@/@MM@/@DD@"
 
 [suite_control]
   do_assimilation = true
   mode = "start"
 
 [submission.task_exceptions.Canari]
-  NPROC = 16
+  NPROC = 4
 
 [submission.task_exceptions.Canari.BATCH]
-  MEM = "#SBATCH --mem=120000MB"
-  NODES = "#SBATCH --nodes=1"
-  NTASKS = "#SBATCH --ntasks=16"
-  WALLTIME = "#SBATCH --time=00:30:00"
 
 [domain]
   tstep = 50

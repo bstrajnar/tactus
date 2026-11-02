@@ -172,6 +172,11 @@ class TactusSuiteDefinition(SuiteDefinition):
             # Update triggers for final cleaning node
             final_cleaning_trigger.append(last_time_dependent_part)
 
+        final_cleaning_trigger.extend(
+            self.add_final_nodes(config, input_template, list(final_cleaning_trigger))
+            or []
+        )
+
         if config["reference_checker.check"] or config["reference_checker.generate"]:
             EcflowSuiteTask(
                 "ReferenceCheck",
@@ -196,3 +201,19 @@ class TactusSuiteDefinition(SuiteDefinition):
                 variables={"TACTUS_TASK": "Cleaning", "ARGS": "cleaning_type=PostMortem"},
                 ecf_files_remotely=self.ecf_files_remotely,
             )
+
+    def add_final_nodes(self, config, input_template, trigger):
+        """Add nodes that run after the rest of the suite, before final cleaning.
+
+        Does nothing by default; override in a subclass to add nodes.
+
+        Args:
+            config (ParsedConfig): Configuration file
+            input_template (str): ecFlow job template
+            trigger (list): Nodes the added nodes should trigger on
+
+        Returns:
+            list: The added nodes, which the final cleaning then waits for.
+                  None (the default) adds nothing.
+
+        """

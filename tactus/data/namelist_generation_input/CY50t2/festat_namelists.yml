@@ -1,0 +1,14 @@
+festat_base:
+  # NCASES and NGRPTS are set by the Festat task from the cycles and members.
+  # Grid, truncation and levels are read from the header of ensdiff001.
+  NAMFESTAT:
+    LELAM: true
+    LSTABAL: true
+    LANAFBAL: true    # REGVORP (statistical vor->P balance) is global only
+    LUVBAL: false
+    OUTBAL: stabal96.bal
+    OUTCVU: stabal96.cv
+    OUTCVT: stabal96.cvt
+    NPRINTLEV: 0
+    LTRANS2: false
+    LMODBIAS: true
